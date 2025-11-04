@@ -3,7 +3,7 @@
 A TypeScript framework for building embedded interactive applications with event management, state management, navigation, and screensaver functionality. The package is designed to maximise compatibility with older versions of Node/Chromium, specifically to work with BrightSign media players. 
 
 The package also emphsises support for touchscreen input, but can also be used for cursor/poiner device inputs. 
-
+test change
 ## Installation
 
 ### Local Development with npm link
