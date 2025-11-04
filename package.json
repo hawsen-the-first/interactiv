@@ -1,0 +1,58 @@
+{
+  "name": "interactiv",
+  "version": "1.0.0",
+  "description": "A TypeScript framework for building interactive applications with event management, state management, navigation, and screensaver functionality",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./animations.css": "./dist/animations.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && npm run copy-css",
+    "copy-css": "node -e \"require('fs').cpSync('src/animations.css', 'dist/animations.css')\"",
+    "prepublishOnly": "npm run build",
+    "dev": "tsc --watch",
+    "lint": "eslint . --ext .ts,.js,.mts,.cts",
+    "lint:fix": "eslint . --ext .ts,.js,.mts,.cts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && npm run format:check"
+  },
+  "keywords": [
+    "typescript",
+    "framework",
+    "interactive",
+    "event-management",
+    "state-management",
+    "navigation",
+    "screensaver",
+    "app-builder"
+  ],
+  "author": "",
+  "license": "ISC",
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/node": "^24.5.2",
+    "eslint": "^9.33.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.40.0"
+  }
+}

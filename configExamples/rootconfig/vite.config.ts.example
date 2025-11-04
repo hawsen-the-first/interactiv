@@ -1,0 +1,87 @@
+// Uncomment me - in case that wasn't obvious...
+
+//import { defineConfig } from "vite";
+
+// export default defineConfig({
+//   build: {
+//     // Target older browsers for BrightSign compatibility
+//     target: "es2015",
+//     rollupOptions: {
+//       output: {
+//         // Force traditional JavaScript format instead of ES modules
+//         format: "iife",
+//         // Ensure consistent file extensions
+//         assetFileNames: (assetInfo) => {
+//           if (!assetInfo.name) return `assets/[name]-[hash][extname]`;
+//           const info = assetInfo.name.split(".");
+//           const ext = info[info.length - 1];
+//           if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
+//             return `assets/[name]-[hash][extname]`;
+//           }
+//           return `assets/[name]-[hash][extname]`;
+//         },
+//         chunkFileNames: "assets/[name]-[hash].js",
+//         entryFileNames: "assets/[name]-[hash].js",
+//       },
+//     },
+//     // Copy .htaccess file to dist for BrightSign MIME type support
+//     copyPublicDir: true,
+//   },
+//   plugins: [
+//     // Custom plugin to add MIME type meta tags and headers for BrightSign
+//     {
+//       name: "brightsign-mime-types",
+//       transformIndexHtml(html) {
+//         // Add meta tags for MIME type associations
+//         const mimeTypeMeta = `
+//     <!-- MIME type associations for BrightSign -->
+//     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+//     <meta name="file-types" content="js=application/javascript,css=text/css">`;
+
+//         // Insert before closing head tag
+//         html = html.replace(
+//           "</head>",
+//           `${mimeTypeMeta}
+//   </head>`
+//         );
+
+//         // Remove type="module" and ensure script tags have correct type attributes
+//         html = html.replace(
+//           /<script([^>]*?)type="module"([^>]*?)src="([^"]*\.js)"([^>]*?)>/g,
+//           '<script$1$2src="$3"$4>'
+//         );
+
+//         // Remove any duplicate type attributes and add single correct one
+//         html = html.replace(
+//           /<script([^>]*?)type="application\/javascript"([^>]*?)type="application\/javascript"([^>]*?)>/g,
+//           '<script$1$2type="application/javascript"$3>'
+//         );
+
+//         // Ensure all script tags have the correct type attribute
+//         html = html.replace(
+//           /<script([^>]*?)src="([^"]*\.js)"([^>]*?)>/g,
+//           (match, before, src, after) => {
+//             if (before.includes("type=") || after.includes("type=")) {
+//               return match; // Already has type attribute
+//             }
+//             return `<script${before}type="application/javascript" src="${src}"${after}>`;
+//           }
+//         );
+
+//         // Ensure link tags have explicit type attributes
+//         html = html.replace(
+//           /<link([^>]*?)rel="stylesheet"([^>]*?)href="([^"]*\.css)"([^>]*?)>/g,
+//           '<link$1rel="stylesheet" type="text/css"$2href="$3"$4>'
+//         );
+
+//         return html;
+//       },
+//     },
+//   ],
+//   server: {
+//     // Configure dev server MIME types
+//     headers: {
+//       "Cache-Control": "no-cache",
+//     },
+//   },
+// });

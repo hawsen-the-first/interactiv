@@ -1,0 +1,45 @@
+# Source files
+src/
+utils/
+index.ts
+*.ts
+!dist/**/*.d.ts
+
+# Config files
+tsconfig.json
+.prettierrc.example.json
+.prettierignore.example
+eslint.config.example.js
+vite.config.ts.example
+configExamples/
+
+# Documentation (keep only what's needed)
+SETTINGS_MANAGER.md
+
+# Development files
+.vscode/
+.git/
+.gitignore
+*.log
+node_modules/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Test files
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Editor files
+.DS_Store
+.idea/
+*.swp
+*.swo
+*~

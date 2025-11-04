@@ -1,0 +1,160 @@
+/* Base navigation item styles */
+.nav-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.nav-item.nav-hidden {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* Animation base classes */
+.animated {
+  /*Defaults: duration of 2s and timing function linear unless otherwise specified.*/
+  transition-duration: 2s;
+  transition-timing-function: linear;
+}
+
+/* Durations */
+.snap {
+  transition-duration: 0.5s !important;
+}
+
+.fast {
+  transition-duration: 1s !important;
+}
+
+.slow {
+  transition-duration: 5s !important;
+}
+
+.gradual {
+  transition-duration: 8s !important;
+}
+
+/* Snap Navigation - Immediate transitions with no animation */
+.snap-active {
+  transition: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+
+/* Fade Animations */
+.fade {
+  transition: opacity;
+}
+
+.fade.out {
+  opacity: 0;
+}
+
+.fade.in {
+  opacity: 1;
+}
+
+/* Fade animations for NavigationManager */
+.fade-out {
+  opacity: 0;
+}
+
+.fade-in {
+  opacity: 0;
+}
+
+.fade-active {
+  opacity: 1;
+}
+
+.transition-right {
+  transition: left 2000ms linear;
+  position: relative !important;
+  left: 1000px !important;
+}
+
+/* Slide Animations */
+.slide-out-left {
+  transform: translateX(-100%);
+}
+
+.slide-out-right {
+  transform: translateX(100%);
+}
+
+.slide-out-up {
+  transform: translateY(-100%);
+}
+
+.slide-out-down {
+  transform: translateY(100%);
+}
+
+.slide-in-left {
+  transform: translateX(-100%);
+}
+
+.slide-in-right {
+  transform: translateX(100%);
+}
+
+.slide-in-up {
+  transform: translateY(-100%);
+}
+
+.slide-in-down {
+  transform: translateY(100%);
+}
+
+.slide-active {
+  transform: translateX(0) translateY(0);
+}
+
+/* Scale Animations */
+.scale-out {
+  transform: scale(0);
+  opacity: 0;
+}
+
+.scale-in {
+  transform: scale(0);
+  opacity: 0;
+}
+
+.scale-active {
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* Flip Animations */
+.flip-out {
+  transform: rotateY(-90deg);
+  opacity: 0;
+}
+
+.flip-in {
+  transform: rotateY(90deg);
+  opacity: 0;
+}
+
+.flip-active {
+  transform: rotateY(0deg);
+  opacity: 1;
+}
+
+/* Legacy fade classes for backward compatibility */
+.fade {
+  transition-property: opacity;
+}
+
+.fade.in {
+  opacity: 1;
+}
+
+.fade.out {
+  opacity: 0;
+}
