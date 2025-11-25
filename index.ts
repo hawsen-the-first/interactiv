@@ -1,5 +1,5 @@
 import { AppBuilder, Page, View, Component } from "./src/appBuilder";
-import { createOrchestrator } from "./src/eventBus";
+import { createOrchestrator, EventOrchestrator, EventBus } from "./src/eventBus";
 import { NavigationManager } from "./src/navigationManager";
 import { ScreensaverManager } from "./src/screensaverManager";
 import { SettingsManager } from "./src/settingsManager";
@@ -11,6 +11,7 @@ import {
   subscribeToGlobalState,
   useGlobalStateExternal,
   ExternalStateManager,
+  ComponentStateManager,
 } from "./src/stateManager";
 import type {
   PointerEventData,
@@ -21,16 +22,16 @@ import type {
 import type { StateSubscription } from "./src/stateManager";
 import type { ScreensaverConfig } from "./src/screensaverManager";
 import type { SettingsConfig } from "./src/settingsManager";
-import "./src/animations.css";
 import type { PageProps, ComponentProps, ViewProps } from "./src/types";
 import { css, html } from "./utils/template-helpers";
 import { Logger } from "./utils/logger";
 import { useAnimations } from "./src/animationBus";
-
-const log = new Logger(true, "trace");
+import { configureLogger } from "./src/logger";
 
 export {
   createOrchestrator,
+  EventOrchestrator,
+  EventBus,
   AppBuilder,
   Page,
   View,
@@ -47,9 +48,11 @@ export {
   useGlobalStateExternal,
   useAnimations,
   ExternalStateManager,
+  ComponentStateManager,
   css,
   html,
-  log,
+  Logger,
+  configureLogger,
 };
 
 export type {

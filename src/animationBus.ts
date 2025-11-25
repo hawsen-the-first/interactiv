@@ -1,7 +1,7 @@
 import { EventBus, EventOrchestrator } from "./eventBus";
-import { Logger } from "../utils/logger";
+import { logger } from "./logger";
 import { generateGUID } from "../utils/generateGuid";
-const log = new Logger();
+const log = logger;
 
 export function useAnimations(orchestrator: EventOrchestrator) {
   // Initialize the AnimationManager

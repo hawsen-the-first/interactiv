@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run copy-css",
+    "rollup": "rm -rf ./dist && npm run build",
     "copy-css": "node -e \"require('fs').cpSync('src/animations.css', 'dist/animations.css')\"",
     "prepublishOnly": "npm run build",
     "dev": "tsc --watch",

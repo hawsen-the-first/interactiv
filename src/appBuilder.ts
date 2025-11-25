@@ -14,12 +14,13 @@ import type {
   HoverCallbacks,
   SwipeCallbacks,
 } from "./eventManager";
-import { log } from "..";
+import { logger } from "./logger";
 
 abstract class RenderableComponent {
   public componentId: string;
-  protected shadowRoot!: ShadowRoot;
+  public state: any;
   public renderBus: EventBus;
+  protected shadowRoot!: ShadowRoot;
   protected bubbleChanges: boolean;
   protected children: RenderableComponent[] = [];
   protected parent?: RenderableComponent;
@@ -31,7 +32,7 @@ abstract class RenderableComponent {
   protected eventManager!: EventManager;
   protected stateManager!: ComponentStateManager;
   protected orchestrator: EventOrchestrator;
-  public state: any;
+  private globalSheets: CSSStyleSheet[];
 
   constructor(
     id: string,
@@ -41,6 +42,7 @@ abstract class RenderableComponent {
     this.componentId = id;
     this.bubbleChanges = bubbleChanges;
     this.orchestrator = orchestrator;
+    this.globalSheets = [];
 
     this.renderBus = orchestrator.registerEventBus(`render-${id}`);
 
@@ -68,13 +70,20 @@ abstract class RenderableComponent {
       this.handleParentChange(changeType);
     });
   }
-
   protected attachShadowDOM(): void {
     this.hostElement = document.createElement("div");
     this.hostElement.id = this.componentId;
     this.shadowRoot = this.hostElement.attachShadow({ mode: "open" });
+    if(this.globalSheets?.length > 0){
+      this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, ...this.globalSheets]
+    }
   }
-
+  public async useGlobalStyles(path: string) {
+    const text = await fetch(path).then(r => r.text());
+    const sheet = new CSSStyleSheet();
+    await sheet.replace(text);
+    this.globalSheets.push(sheet);
+  }
   private initializeEventManager(): void {
     this.eventManager = new EventManager(this.shadowRoot, this.componentId);
   }
@@ -191,7 +200,7 @@ abstract class RenderableComponent {
         child.performRender();
 
         // Ensure child host element is visible
-        child.hostElement.style.display = "block";
+        //child.hostElement.style.display = "block";
 
         childrenContainer.appendChild(child.hostElement);
       });
@@ -532,7 +541,7 @@ abstract class RenderableComponent {
 class AppBuilder extends RenderableComponent {
   private pages: Page[] = [];
   private navigationManager: NavigationManager;
-
+  
   constructor(orchestrator: EventOrchestrator) {
     super("app-builder", orchestrator, false); // Don't bubble by default
     this.navigationManager = new NavigationManager(orchestrator);
@@ -908,7 +917,7 @@ class View extends RenderableComponent {
   }
   // TODO: Make this actually remove the component from the DOM.
   public removeComponent(componentId: string): void {
-    log.trace(`Removing component with ID: ${componentId}`);
+    logger.trace(`Removing component with ID: ${componentId}`);
     const componentIndex = this.components.findIndex((c) => {
       c.componentId === componentId;
     });

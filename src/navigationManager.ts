@@ -1,9 +1,9 @@
 import { EventBus, EventOrchestrator } from "./eventBus";
 import { Page, View } from "./appBuilder";
 import { stateManager, type StateSubscription } from "./stateManager";
-import { Logger } from "../utils/logger";
+import { logger } from "./logger";
 
-const log = new Logger();
+const log = logger;
 
 export interface TransitionConfig {
   type: "slide" | "fade" | "scale" | "flip" | "snap" | "custom";

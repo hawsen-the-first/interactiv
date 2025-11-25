@@ -1,8 +1,8 @@
-import { Logger } from "../utils/logger";
-import type { EventBusRecord, EventListenerRecord } from "./types";
-import { Store } from "./stateManager";
-import { generateGUID } from "../utils/generateGuid";
-const log = new Logger(false, "none");
+import { logger } from "./logger.js";
+import type { EventBusRecord, EventListenerRecord } from "./types.js";
+import { Store } from "./stateManager.js";
+import { generateGUID } from "../utils/generateGuid.js";
+const log = logger;
 
 export class EventBus<DetailType = any> {
   private eventTarget: EventTarget;

@@ -1,7 +1,7 @@
 /* eslint-disable no-prototype-builtins */
 /* eslint-disable @typescript-eslint/no-this-alias */
-import { Logger } from "../utils/logger";
-const log = new Logger();
+import { logger } from "./logger";
+const log = logger;
 
 class State {
   private events: any;

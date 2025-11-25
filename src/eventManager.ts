@@ -1,6 +1,6 @@
-import { Logger } from "../utils/logger";
+import { logger } from "./logger";
 
-const log = new Logger(true, "trace");
+const log = logger;
 
 export interface PointerEventData {
   x: number;

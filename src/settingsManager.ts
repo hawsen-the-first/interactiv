@@ -2,9 +2,9 @@ import { EventBus, EventOrchestrator } from "./eventBus";
 import { View } from "./appBuilder";
 import { NavigationManager, type TransitionConfig } from "./navigationManager";
 import { stateManager } from "./stateManager";
-import { Logger } from "../utils/logger";
+import { logger } from "./logger";
 
-const log = new Logger();
+const log = logger;
 
 export interface SettingsConfig {
   view: View;
