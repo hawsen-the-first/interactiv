@@ -36,6 +36,21 @@ export class AnimationManager {
       const { keyframes, options, target } = animationRecord.request;
       animationRecord.animation = target.animate(keyframes, options);
 
+      // Add cleanup listeners for when animation completes
+      animationRecord.animation.addEventListener("finish", () => {
+        me.cleanupAnimation(animationRecord.id);
+        log.trace(
+          `Animation finished and cleaned up: ${animationRecord.id} (${animationRecord.request.type})`
+        );
+      });
+
+      animationRecord.animation.addEventListener("cancel", () => {
+        me.cleanupAnimation(animationRecord.id);
+        log.trace(
+          `Animation cancelled and cleaned up: ${animationRecord.id} (${animationRecord.request.type})`
+        );
+      });
+
       log.trace(
         `Animation started: ${animationRecord.id} (${animationRecord.request.type})`
       );
@@ -58,6 +73,8 @@ export class AnimationManager {
             log.trace(`Animation stopped: ${animationRecord.id}`);
           }
         }
+        // Clean up all animations after cancelling
+        me.animationRecords = [];
       } else {
         const animationRecord = me.animationRecords.filter(
           (a) => a.id === e.detail
@@ -66,6 +83,7 @@ export class AnimationManager {
           animationRecord.animation.cancel();
           log.trace(`Animation stopped: ${animationRecord.id}`);
         }
+        // Animation will be cleaned up by the cancel event listener
       }
     });
     animationBus.on("stopGroup", (e: CustomEvent<string>) => {
@@ -78,7 +96,46 @@ export class AnimationManager {
           log.trace(`Group animation stopped: ${a.id} (group: ${e.detail})`);
         }
       }
+      // Animations will be cleaned up by their cancel event listeners
     });
+  }
+
+  /**
+   * Remove an animation from the records array
+   * This is called when an animation finishes or is cancelled
+   */
+  private cleanupAnimation(animationId: string): void {
+    const index = this.animationRecords.findIndex((a) => a.id === animationId);
+    if (index !== -1) {
+      this.animationRecords.splice(index, 1);
+      log.trace(`Animation record removed. Total active animations: ${this.animationRecords.length}`);
+    }
+  }
+
+  /**
+   * Get the current number of active animations
+   */
+  public getActiveAnimationCount(): number {
+    return this.animationRecords.length;
+  }
+
+  /**
+   * Clean up stale animation records (animations that are finished but not cleaned up)
+   * This is a safety net for any animations that didn't fire their finish/cancel events
+   */
+  public cleanupStaleAnimations(): void {
+    const beforeCount = this.animationRecords.length;
+    this.animationRecords = this.animationRecords.filter((record) => {
+      if (record.animation) {
+        const playState = record.animation.playState;
+        return playState !== "finished" && playState !== "idle";
+      }
+      return false; // Remove records without animation reference
+    });
+    const removedCount = beforeCount - this.animationRecords.length;
+    if (removedCount > 0) {
+      log.trace(`Cleaned up ${removedCount} stale animation records. Remaining: ${this.animationRecords.length}`);
+    }
   }
 }
 

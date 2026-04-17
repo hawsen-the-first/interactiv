@@ -1,0 +1,11 @@
+# Only include essentials for NPM package
+node_modules/
+.git/
+.DS_Store
+*.log
+
+# Include everything else (templates, bin, package.json)
+!templates/
+!bin/
+!package.json
+!README.md

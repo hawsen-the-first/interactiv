@@ -14,7 +14,14 @@ import type {
   HoverCallbacks,
   SwipeCallbacks,
 } from "./eventManager";
+import type { RenderOptions } from "./types";
 import { logger } from "./logger";
+import {
+  TransitionOverlay,
+  type TransitionOverlayConfig,
+  type TransitionRequestPayload,
+  stateChangesToCallback,
+} from "./transitionOverlay";
 
 abstract class RenderableComponent {
   public componentId: string;
@@ -78,8 +85,7 @@ abstract class RenderableComponent {
       this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, ...this.globalSheets]
     }
   }
-  public async useGlobalStyles(path: string) {
-    const text = await fetch(path).then(r => r.text());
+  public async useGlobalStyles(text: string) {
     const sheet = new CSSStyleSheet();
     await sheet.replace(text);
     this.globalSheets.push(sheet);
@@ -127,7 +133,32 @@ abstract class RenderableComponent {
     }
   }
 
-  protected performRender(): void {
+  protected performRender(options?: RenderOptions): void {
+    const fadeConfig = options?.fade;
+    
+    if (fadeConfig?.enabled) {
+      this.performRenderWithFade(fadeConfig.duration ?? 300, options);
+    } else {
+      this.performRenderImmediate(options);
+    }
+  }
+
+  private async performRenderWithFade(duration: number, options?: RenderOptions): Promise<void> {
+    // Fade out
+    this.hostElement.style.transition = `opacity ${duration}ms ease`;
+    this.hostElement.style.opacity = '0';
+    
+    // Wait for fade out to complete
+    await new Promise(resolve => setTimeout(resolve, duration));
+    
+    // Perform actual render
+    this.performRenderImmediate(options);
+    
+    // Fade in
+    this.hostElement.style.opacity = '1';
+  }
+
+  private performRenderImmediate(options?: RenderOptions): void {
     this.onBeforeRender();
 
     const compiledHTML = this.compileTemplate();
@@ -136,7 +167,7 @@ abstract class RenderableComponent {
       this.updateShadowDOM(compiledHTML);
       this.lastRenderedHTML = compiledHTML;
       this.attachEventListeners();
-      this.renderChildren();
+      this.renderChildren(options);
     }
 
     this.onAfterRender();
@@ -186,9 +217,10 @@ abstract class RenderableComponent {
       <style>${this.styles}</style>
       ${html}
     `;
+    this.onAfterDomUpdate();
   }
 
-  private renderChildren(): void {
+  private renderChildren(options?: RenderOptions): void {
     const childrenContainer = this.shadowRoot.querySelector(
       ".children-container"
     );
@@ -197,7 +229,8 @@ abstract class RenderableComponent {
       childrenContainer.innerHTML = "";
       this.children.forEach((child) => {
         // Ensure child is rendered before appending
-        child.performRender();
+        // Pass fade options to children so they fade together
+        child.performRender(options);
 
         // Ensure child host element is visible
         //child.hostElement.style.display = "block";
@@ -349,6 +382,7 @@ abstract class RenderableComponent {
 
   protected onBeforeRender(): void {}
   public onAfterRender(): void {}
+  protected onAfterDomUpdate(): void {}
 
   protected shouldRerender(changeType: string, source: string): boolean {
     if (changeType && source) {
@@ -477,7 +511,7 @@ abstract class RenderableComponent {
   /**
    * Create and manage local component state
    */
-  protected useState<T>(
+  public useState<T>(
     key: string,
     initialValue: T
   ): [T, (newValue: T) => void] {
@@ -586,11 +620,6 @@ class AppBuilder extends RenderableComponent {
         font-family: Arial, sans-serif;
       }
       
-      .app-content {
-        flex: 1;
-        overflow: auto;
-        padding: 1rem;
-      }
     `;
   }
 
@@ -609,18 +638,18 @@ class AppBuilder extends RenderableComponent {
     }
   }
 
-  public async navigateToPage(
+  public navigateToPage(
     pageId: string,
     config?: import("./navigationManager").TransitionConfig
-  ): Promise<void> {
-    return this.navigationManager.navigateToPage(pageId, config);
+  ): void {
+    this.orchestrator.navigateToPage(pageId, config);
   }
 
-  public async navigateToView(
+  public navigateToView(
     viewId: string,
     config?: import("./navigationManager").TransitionConfig
-  ): Promise<void> {
-    return this.navigationManager.navigateToView(viewId, config);
+  ): void {
+    this.orchestrator.navigateToView(viewId, config);
   }
 
   public getCurrentPageId(): string | null {
@@ -635,6 +664,36 @@ class AppBuilder extends RenderableComponent {
     return this.navigationManager.isTransitioning();
   }
 
+  /**
+   * Add a screensaver page with the specified configuration
+   * The screensaver page can contain multiple views for rich interactive experiences.
+   * Pass `null` for screensaverPage when using `screensaverViewBehavior: "returnHome"` mode,
+   * which navigates back to a home page/view on timeout instead of showing a screensaver.
+   * @param screensaverPage The page to use as the screensaver (can contain multiple views), or null for returnHome mode
+   * @param config Configuration object for the screensaver (excluding 'page' property)
+   */
+  public addScreensaver(screensaverPage: Page | null, config: Omit<ScreensaverConfig, 'page'>): void {
+    // Add the screensaver page to the app (only if provided)
+    if (screensaverPage) {
+      this.addPage(screensaverPage);
+    }
+
+    // Register the screensaver with the screensaver manager via event bus
+    const screensaverBus = this.orchestrator.getEventBus("screensaver-manager");
+    if (screensaverBus) {
+      screensaverBus.emit("register-screensaver", {
+        config: {
+          ...config,
+          page: screensaverPage || undefined,
+        },
+      });
+    } else {
+      throw new Error(
+        "Screensaver manager not found. Ensure AppBuilder is properly initialized."
+      );
+    }
+  }
+
   public attachToDom(): void {
     const appContainer = document.getElementById("app");
     if (appContainer) {
@@ -644,10 +703,13 @@ class AppBuilder extends RenderableComponent {
       document.body.appendChild(this.getHostElement());
     }
   }
+
 }
 // Page - Contains Views
 class Page extends RenderableComponent {
   private views: View[] = [];
+  private transitionOverlay: TransitionOverlay | null = null;
+  private transitionBus: EventBus | null = null;
 
   constructor(
     id: string,
@@ -771,22 +833,139 @@ class Page extends RenderableComponent {
   }
 
   /**
-   * Add a screensaver to this page with the specified configuration
-   * @param view The view to use as the screensaver
-   * @param config Configuration object for the screensaver
+   * Enable transition overlay for this page
+   * 
+   * Creates a full-screen overlay that fades in/out to hide content changes during state updates.
+   * Once enabled, components can request transitions via the "page-transition-overlay" event bus.
+   * 
+   * @param config - Configuration for the overlay appearance and timing
    */
-  public addScreensaver(view: View, config: ScreensaverConfig): void {
-    // First add the view to this page (but don't register it with navigation yet)
-    this.views.push(view);
-    this.addChild(view);
+  public useTransitionOverlay(config: TransitionOverlayConfig): void {
+    if (this.transitionOverlay) {
+      logger.warn(`Page ${this.componentId} already has a transition overlay configured`);
+      return;
+    }
 
+    // Create the transition overlay
+    this.transitionOverlay = new TransitionOverlay(config, this.shadowRoot);
+
+    // Register the event bus for transition requests
+    this.transitionBus = this.orchestrator.registerEventBus("page-transition-overlay");
+
+    // Listen for transition requests
+    this.transitionBus.on("request-transition", async (e) => {
+      const payload = e.detail as TransitionRequestPayload & { 
+        callback?: () => void | Promise<void>;
+        _resolve?: () => void;
+        _reject?: (error: Error) => void;
+      };
+
+      try {
+        // Build the callback from state changes or use provided callback
+        let callback: () => void | Promise<void>;
+
+        if (payload.callback) {
+          // Direct callback provided (from standalone utility)
+          callback = payload.callback;
+        } else if (payload.stateChanges) {
+          // State changes array provided (from consumer usage)
+          callback = async () => {
+            stateChangesToCallback(payload.stateChanges!)();
+            
+            // Execute afterStateChange if provided
+            if (payload.afterStateChange) {
+              await Promise.resolve(payload.afterStateChange());
+            }
+          };
+        } else {
+          throw new Error("Transition request must include either 'callback' or 'stateChanges'");
+        }
+
+        // Execute the transition with config overrides
+        await this.transitionOverlay!.executeTransition(callback, {
+          fadeInDuration: payload.fadeInDuration,
+          holdDuration: payload.holdDuration,
+          fadeOutDuration: payload.fadeOutDuration,
+        });
+
+        // Resolve the promise if provided (from standalone utility)
+        if (payload._resolve) {
+          payload._resolve();
+        }
+      } catch (error) {
+        logger.error("Transition overlay error:", error as Error);
+        
+        // Reject the promise if provided (from standalone utility)
+        if (payload._reject) {
+          payload._reject(error as Error);
+        }
+      }
+    });
+
+    logger.trace(`Transition overlay enabled for page ${this.componentId}`);
+  }
+
+  /**
+   * Execute a callback wrapped in the transition overlay lifecycle
+   * 
+   * This is a convenience method for direct Page-level access to the overlay.
+   * For deeply nested components, prefer using the standalone `transitionWithOverlay` utility
+   * or emitting to the "page-transition-overlay" event bus.
+   * 
+   * @param callback - Function to execute while overlay is opaque (state changes happen here)
+   * @returns Promise that resolves after the full transition completes
+   * @throws Error if useTransitionOverlay() hasn't been called
+   */
+  public async transitionWithOverlay(callback: () => void | Promise<void>): Promise<void> {
+    if (!this.transitionOverlay) {
+      throw new Error(
+        `Page ${this.componentId} does not have a transition overlay. Call useTransitionOverlay() first.`
+      );
+    }
+
+    return this.transitionOverlay.executeTransition(callback);
+  }
+
+  /**
+   * Check if this page has a transition overlay enabled
+   */
+  public hasTransitionOverlay(): boolean {
+    return this.transitionOverlay !== null;
+  }
+
+  /**
+   * Get the TransitionOverlay instance for this page (for NavigationManager integration)
+   */
+  public getTransitionOverlay(): TransitionOverlay | null {
+    return this.transitionOverlay;
+  }
+
+  /**
+   * Lifecycle hook called after shadow DOM has been updated.
+   * Re-attaches the transition overlay element if it exists, since updateShadowDOM()
+   * replaces the entire shadow DOM innerHTML.
+   */
+  protected onAfterDomUpdate(): void {
+    if (this.transitionOverlay) {
+      this.transitionOverlay.reattach();
+    }
+  }
+
+  /**
+   * Add a screensaver page with the specified configuration.
+   * Pass `null` for screensaverPage when using `screensaverViewBehavior: "returnHome"` mode,
+   * which navigates back to a home page/view on timeout instead of showing a screensaver.
+   * @param screensaverPage The page to use as the screensaver (can contain multiple views), or null for returnHome mode
+   * @param config Configuration object for the screensaver (excluding 'page' property)
+   */
+  public addScreensaver(screensaverPage: Page | null, config: Omit<ScreensaverConfig, 'page'>): void {
     // Register the screensaver with the screensaver manager via event bus
     const screensaverBus = this.orchestrator.getEventBus("screensaver-manager");
     if (screensaverBus) {
       screensaverBus.emit("register-screensaver", {
         config: {
           ...config,
-          view: view,
+          page: screensaverPage || undefined,
         },
       });
     } else {

@@ -47,17 +47,62 @@ export class EventBus<DetailType = any> {
   }
 
   remove(type: string): void {
-    this.activeListeners.filter((l) => l.eventName === type)[0].remove();
-    log.trace(`Event listener ${type} removed from Event Bus ${this.id}`);
+    const listenersToRemove = this.activeListeners.filter((l) => l.eventName === type);
+    
+    if (listenersToRemove.length === 0) {
+      log.warn(`No listener found for event type: ${type} on Event Bus ${this.id}`);
+      return;
+    }
+
+    // Remove all listeners of this type
+    listenersToRemove.forEach((listener) => {
+      listener.remove();
+    });
+
+    // Clean up the activeListeners array
+    this.activeListeners = this.activeListeners.filter((l) => l.eventName !== type);
+    
+    log.trace(`Event listener(s) ${type} removed from Event Bus ${this.id}. Remaining listeners: ${this.activeListeners.length}`);
+  }
+
+  /**
+   * Remove all listeners for this event bus
+   */
+  removeAll(): void {
+    this.activeListeners.forEach((listener) => {
+      listener.remove();
+    });
+    this.activeListeners = [];
+    log.trace(`All event listeners removed from Event Bus ${this.id}`);
+  }
+
+  /**
+   * Get the count of active listeners
+   */
+  getListenerCount(): number {
+    return this.activeListeners.length;
+  }
+
+  /**
+   * Destroy this event bus and clean up all listeners
+   */
+  destroy(): void {
+    this.removeAll();
+    // Remove the comment node from DOM if it has a parent
+    if (this.eventTarget instanceof Node && this.eventTarget.parentNode) {
+      this.eventTarget.parentNode.removeChild(this.eventTarget);
+    }
+    log.trace(`Event Bus ${this.id} destroyed`);
   }
 
   emit(type: string, detail?: DetailType) {
-    try {
-      this.validateEventDispatch(type);
-      return this.eventTarget.dispatchEvent(new CustomEvent(type, { detail }));
-    } catch (error: any) {
-      log.error(error.message, error);
+    // Check if there are any listeners before dispatching
+    if (this.activeListeners.filter((l) => l.eventName === type).length === 0) {
+      log.trace(`Event Bus [${this.id}]: No listeners registered for event "${type}", skipping dispatch.`);
+      return true; // Return true to indicate the event was "handled" (just not dispatched)
     }
+    
+    return this.eventTarget.dispatchEvent(new CustomEvent(type, { detail }));
   }
 
   // private validateNewListener(type: string): void {
@@ -66,14 +111,6 @@ export class EventBus<DetailType = any> {
   //   // Components may need to register multiple listeners for the same event
   //   return;
   // }
-
-  private validateEventDispatch(type: string): void {
-    if (this.activeListeners.filter((l) => l.eventName === type).length === 0) {
-      throw new Error(
-        `Failed to dispatch event. Event Bus with Id ${this.id} does not contain a listener for an event with the name ${type}`
-      );
-    }
-  }
 }
 
 export class EventOrchestrator {
@@ -180,8 +217,15 @@ export class EventOrchestrator {
   private getPrioritisedEventFromQueue() {
     const currentTime = Date.now();
 
-    // Filter out scheduled events that haven't reached their scheduled time yet
+    // Filter out expired events and scheduled events that haven't reached their scheduled time yet
     const availableEvents = this.eventQueue.filter((event) => {
+      // Remove expired events
+      if (event.expiry && event.expiry <= currentTime) {
+        log.trace(`Event expired and removed from queue: ${event.eventId} on bus ${event.eventBusId}`);
+        return false;
+      }
+      
+      // Check scheduled events
       if (event.priority === "scheduled") {
         return event.scheduleFor <= currentTime;
       }
@@ -224,6 +268,100 @@ export class EventOrchestrator {
     }
 
     return nextEvent;
+  }
+
+  /**
+   * Clean up expired events from the queue
+   * This is a safety net for expired events that weren't processed
+   */
+  public cleanupExpiredEvents(): number {
+    const currentTime = Date.now();
+    const beforeCount = this.eventQueue.length;
+    
+    this.eventQueue = this.eventQueue.filter((event) => {
+      if (event.expiry && event.expiry <= currentTime) {
+        log.trace(`Expired event cleaned up: ${event.eventId} on bus ${event.eventBusId}`);
+        return false;
+      }
+      return true;
+    });
+    
+    const removedCount = beforeCount - this.eventQueue.length;
+    if (removedCount > 0) {
+      log.trace(`Cleaned up ${removedCount} expired events. Remaining queue size: ${this.eventQueue.length}`);
+    }
+    return removedCount;
+  }
+
+  /**
+   * Get the current size of the event queue
+   */
+  public getQueueSize(): number {
+    return this.eventQueue.length;
+  }
+
+  /**
+   * Get the count of registered event buses
+   */
+  public getEventBusCount(): number {
+    return this.eventBuses.length;
+  }
+
+  /**
+   * Get total listener count across all event buses
+   */
+  public getTotalListenerCount(): number {
+    return this.eventBuses.reduce((total, busRecord) => {
+      return total + busRecord.eventBus.getListenerCount();
+    }, 0);
+  }
+
+  /**
+   * Navigate to a page with optional transition configuration
+   * 
+   * @param pageId - The ID of the page to navigate to
+   * @param config - Optional transition configuration
+   * @param priority - Event priority: "immediate", "normal", or "low" (default: "immediate")
+   */
+  public navigateToPage(
+    pageId: string,
+    config?: {
+      type: "slide" | "fade" | "scale" | "flip" | "snap" | "custom";
+      direction?: "left" | "right" | "up" | "down";
+      duration?: number;
+      easing?: string;
+      customCSS?: string;
+    },
+    priority: string = "immediate"
+  ): void {
+    this.enqueue("navigate-to-page", "navigation-manager", priority, { 
+      pageId, 
+      config: config || { type: "snap" } 
+    });
+  }
+
+  /**
+   * Navigate to a view with optional transition configuration
+   * 
+   * @param viewId - The ID of the view to navigate to
+   * @param config - Optional transition configuration
+   * @param priority - Event priority: "immediate", "normal", or "low" (default: "immediate")
+   */
+  public navigateToView(
+    viewId: string,
+    config?: {
+      type: "slide" | "fade" | "scale" | "flip" | "snap" | "custom";
+      direction?: "left" | "right" | "up" | "down";
+      duration?: number;
+      easing?: string;
+      customCSS?: string;
+    },
+    priority: string = "immediate"
+  ): void {
+    this.enqueue("navigate-to-view", "navigation-manager", priority, { 
+      viewId, 
+      config: config || { type: "snap" } 
+    });
   }
 }
 class ApplicationEventQueueItem {

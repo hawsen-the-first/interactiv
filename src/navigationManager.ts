@@ -19,14 +19,71 @@ export interface NavigationState {
   isTransitioning: boolean;
 }
 
+/**
+ * NavigationManager - Singleton Service for Application Navigation
+ * 
+ * **IMPORTANT: Only ONE instance of NavigationManager should exist per application.**
+ * 
+ * This class manages page and view navigation using shared global state. Multiple instances
+ * would cause critical issues:
+ * - Conflicting global state (navigation.currentPageId, navigation.currentViewId, navigation.isTransitioning)
+ * - Event bus namespace collisions (all instances register as "navigation-manager")
+ * - Ambiguous page/view registration and navigation routing
+ * 
+ * The NavigationManager is automatically instantiated by AppBuilder and should not be
+ * manually created elsewhere in the application.
+ * 
+ * @example
+ * // ✅ Correct: Created once by AppBuilder
+ * class AppBuilder extends RenderableComponent {
+ *   private navigationManager: NavigationManager;
+ *   constructor(orchestrator: EventOrchestrator) {
+ *     this.navigationManager = new NavigationManager(orchestrator);
+ *   }
+ * }
+ * 
+ * // ❌ Wrong: Creating additional instances
+ * const nav1 = new NavigationManager(orchestrator); // First instance - OK
+ * const nav2 = new NavigationManager(orchestrator); // ERROR: Will throw!
+ */
 export class NavigationManager {
+  private static instance: NavigationManager | null = null;
+  private static isDestroyed: boolean = false;
+  
   private eventBus: EventBus;
   private orchestrator: EventOrchestrator;
   private pages: Map<string, Page> = new Map();
   private views: Map<string, View> = new Map();
   private stateSubscriptions: StateSubscription[] = [];
+  private activeTransitionCleanups: Map<HTMLElement, () => void> = new Map();
+
+  /**
+   * Get the singleton instance of NavigationManager
+   * Returns null if no instance has been created yet
+   */
+  public static getInstance(): NavigationManager | null {
+    return NavigationManager.instance;
+  }
 
   constructor(orchestrator: EventOrchestrator) {
+    // Enforce singleton pattern - only one instance allowed
+    if (NavigationManager.instance !== null) {
+      const errorMsg = 
+        "NavigationManager instance already exists! Only one NavigationManager should be created per application. " +
+        "The NavigationManager is automatically created by AppBuilder and should not be instantiated manually.";
+      const error = new Error(errorMsg);
+      log.error(errorMsg, error);
+      throw error;
+    }
+    
+    if (NavigationManager.isDestroyed) {
+      log.warn("Creating new NavigationManager instance after previous instance was destroyed.");
+      NavigationManager.isDestroyed = false;
+    }
+    
+    // Register this as the singleton instance
+    NavigationManager.instance = this;
+    log.trace("NavigationManager singleton instance created");
     this.orchestrator = orchestrator;
     this.eventBus = orchestrator.registerEventBus("navigation-manager");
 
@@ -153,6 +210,9 @@ export class NavigationManager {
       stateManager.set("navigation.currentPageId", pageId);
       stateManager.set("navigation.currentViewId", null); // Reset view when changing pages
 
+      // Hide all views when navigating to a page to ensure clean state
+      this.hideAllViews();
+
       this.eventBus.emit("page-changed", {
         newPageId: pageId,
         previousPageId,
@@ -169,23 +229,47 @@ export class NavigationManager {
 
     if (stateManager.get("navigation.currentViewId") === viewId) {
       log.trace(`Already on view ${viewId}, emitting re-entry event`);
-      this.eventBus.emit("view-re-entered", { viewId });
+      //this.eventBus.emit("view-re-entered", { viewId });
       return; // Already on this view
     }
 
-    const previousViewId = stateManager.get("navigation.currentViewId");
+    const previousViewId = stateManager.get("navigation.currentViewId") as string | null;
     log.trace(`Starting navigation from ${previousViewId} to ${viewId}`);
     stateManager.set("navigation.isTransitioning", true);
 
     try {
-      await this.performViewTransition(viewId, config);
-      stateManager.set("navigation.currentViewId", viewId);
+      // Check if current page has a transition overlay
+      const currentPageId = stateManager.get("navigation.currentPageId") as string;
+      const currentPage = currentPageId ? this.pages.get(currentPageId) : null;
+      const hasOverlay = currentPage && currentPage.hasTransitionOverlay();
 
-      this.eventBus.emit("view-changed", {
-        newViewId: viewId,
-        previousViewId,
-      });
-      log.trace(`Navigation to ${viewId} completed successfully`);
+      if (hasOverlay) {
+        // Use the overlay to wrap the view transition
+        log.trace(`Using transition overlay for view navigation to ${viewId}`);
+        const overlay = currentPage!.getTransitionOverlay()!;
+        
+        await overlay.executeTransition(async () => {
+          // Perform the view swap while overlay is opaque
+          await this.performViewSwapImmediate(viewId, previousViewId);
+          stateManager.set("navigation.currentViewId", viewId);
+        });
+
+        this.eventBus.emit("view-changed", {
+          newViewId: viewId,
+          previousViewId,
+        });
+        log.trace(`Navigation to ${viewId} completed successfully with overlay`);
+      } else {
+        // No overlay - use standard transition
+        await this.performViewTransition(viewId, config);
+        stateManager.set("navigation.currentViewId", viewId);
+
+        this.eventBus.emit("view-changed", {
+          newViewId: viewId,
+          previousViewId,
+        });
+        log.trace(`Navigation to ${viewId} completed successfully`);
+      }
     } catch (error) {
       log.error(`Navigation to ${viewId} failed:`, error as Error);
       throw error;
@@ -211,6 +295,26 @@ export class NavigationManager {
     }
 
     await this.animateIn(targetPage.getHostElement(), normalizedConfig);
+  }
+
+  /**
+   * Perform an immediate view swap (no animation) - used when transition overlay is handling the fade
+   */
+  private async performViewSwapImmediate(targetViewId: string, currentViewId: string | null): Promise<void> {
+    const currentView = currentViewId ? this.views.get(currentViewId) : null;
+    const targetView = this.views.get(targetViewId)!;
+
+    // Hide current view immediately
+    if (currentView) {
+      this.hideView(currentViewId!);
+    }
+
+    // Show target view immediately (no animation since overlay handles the fade)
+    this.showView(targetViewId, false);
+    const element = targetView.getHostElement();
+    element.style.opacity = "1";
+    element.style.visibility = "visible";
+    element.style.transform = "none";
   }
 
   private async performViewTransition(targetViewId: string, config: TransitionConfig): Promise<void> {
@@ -247,12 +351,34 @@ export class NavigationManager {
       const duration = config.duration || 300;
       element.style.transition = `all ${duration}ms ${config.easing || "ease-in-out"}`;
 
+      let transitionendFired = false;
+      let fallbackTimerId: number | null = null;
+
       const cleanup = () => {
-        element.removeEventListener("transitionend", cleanup);
+        if (transitionendFired) return; // Prevent double execution
+        transitionendFired = true;
+
+        // Clean up both the event listener and timeout
+        element.removeEventListener("transitionend", transitionendHandler);
+        if (fallbackTimerId !== null) {
+          clearTimeout(fallbackTimerId);
+          fallbackTimerId = null;
+        }
+
+        // Remove from active transitions map
+        this.activeTransitionCleanups.delete(element);
+
         resolve();
       };
 
-      element.addEventListener("transitionend", cleanup);
+      const transitionendHandler = () => {
+        cleanup();
+      };
+
+      element.addEventListener("transitionend", transitionendHandler, { once: true });
+
+      // Store cleanup function for this element
+      this.activeTransitionCleanups.set(element, cleanup);
 
       // Apply exit animation
       switch (config.type) {
@@ -276,7 +402,10 @@ export class NavigationManager {
       }
 
       // Fallback timeout
-      setTimeout(cleanup, duration + 50);
+      fallbackTimerId = window.setTimeout(() => {
+        log.trace("Transition fallback timeout triggered for animateOut");
+        cleanup();
+      }, duration + 50);
     });
   }
 
@@ -295,6 +424,36 @@ export class NavigationManager {
       const duration = config.duration || 300;
       element.style.transition = `all ${duration}ms ${config.easing || "ease-in-out"}`;
 
+      let transitionendFired = false;
+      let fallbackTimerId: number | null = null;
+
+      const cleanup = () => {
+        if (transitionendFired) return; // Prevent double execution
+        transitionendFired = true;
+
+        // Clean up both the event listener and timeout
+        element.removeEventListener("transitionend", transitionendHandler);
+        if (fallbackTimerId !== null) {
+          clearTimeout(fallbackTimerId);
+          fallbackTimerId = null;
+        }
+
+        // Remove from active transitions map
+        this.activeTransitionCleanups.delete(element);
+
+        this.clearAnimationClasses(element);
+        resolve();
+      };
+
+      const transitionendHandler = () => {
+        cleanup();
+      };
+
+      element.addEventListener("transitionend", transitionendHandler, { once: true });
+
+      // Store cleanup function for this element
+      this.activeTransitionCleanups.set(element, cleanup);
+
       // Set initial state
       switch (config.type) {
         case "slide":
@@ -310,14 +469,6 @@ export class NavigationManager {
           element.classList.add("flip-in");
           break;
       }
-
-      const cleanup = () => {
-        element.removeEventListener("transitionend", cleanup);
-        this.clearAnimationClasses(element);
-        resolve();
-      };
-
-      element.addEventListener("transitionend", cleanup);
 
       // Animate to active state
       requestAnimationFrame(() => {
@@ -342,7 +493,10 @@ export class NavigationManager {
       });
 
       // Fallback timeout
-      setTimeout(cleanup, duration + 50);
+      fallbackTimerId = window.setTimeout(() => {
+        log.trace("Transition fallback timeout triggered for animateIn");
+        cleanup();
+      }, duration + 50);
     });
   }
 
@@ -392,7 +546,8 @@ export class NavigationManager {
     const page = this.pages.get(pageId);
     if (page) {
       const element = page.getHostElement();
-      element.classList.remove("out");
+      element.style.display = "";  // Clear the inline display:none
+      element.classList.remove("nav-hidden", "out");
       element.classList.add("in");
     }
   }
@@ -437,6 +592,14 @@ export class NavigationManager {
     }
   }
 
+  private hideAllViews(): void {
+    // Hide all registered views to ensure clean state
+    this.views.forEach((_, viewId) => {
+      this.hideView(viewId);
+    });
+    log.trace("All views hidden");
+  }
+
   public getCurrentPageId(): string | null {
     return stateManager.get("navigation.currentPageId");
   }
@@ -470,8 +633,43 @@ export class NavigationManager {
     return stateManager.subscribe("navigation.isTransitioning", callback);
   }
 
-  // Cleanup method for proper resource management
+  /**
+   * Clean up any orphaned transition listeners
+   * This is a safety net for transitions that didn't complete properly
+   */
+  public cleanupOrphanedTransitions(): void {
+    const orphanedCount = this.activeTransitionCleanups.size;
+    if (orphanedCount > 0) {
+      log.trace(`Cleaning up ${orphanedCount} orphaned transition(s)`);
+      this.activeTransitionCleanups.forEach((cleanup, element) => {
+        try {
+          cleanup();
+        } catch (error) {
+          log.error(`Error cleaning up orphaned transition for element with ID ${element.id}:`, error as Error);
+        }
+      });
+      this.activeTransitionCleanups.clear();
+    }
+  }
+
+  /**
+   * Get the count of active transitions
+   */
+  public getActiveTransitionCount(): number {
+    return this.activeTransitionCleanups.size;
+  }
+
+  /**
+   * Cleanup method for proper resource management
+   * 
+   * Destroys the NavigationManager instance and clears the singleton reference.
+   * After calling destroy(), a new NavigationManager instance can be created if needed
+   * (though this is typically only necessary during application teardown/restart).
+   */
   public destroy(): void {
+    // Clean up any active transitions
+    this.cleanupOrphanedTransitions();
+
     // Clean up any state subscriptions
     this.stateSubscriptions.forEach((subscription) => {
       subscription.unsubscribe();
@@ -481,5 +679,11 @@ export class NavigationManager {
     // Clear local maps
     this.pages.clear();
     this.views.clear();
+
+    // Clear the singleton instance reference to allow new instance creation
+    NavigationManager.instance = null;
+    NavigationManager.isDestroyed = true;
+
+    log.trace("NavigationManager singleton instance destroyed and cleared");
   }
 }

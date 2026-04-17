@@ -71,8 +71,16 @@ app.addPage(homePage);
 // Attach to DOM
 app.attachToDom();
 
-// Navigate to view
+// Navigate to view - Two equivalent methods:
+
+// Method 1: Via AppBuilder (convenient when you have app reference)
 app.navigateToView("home-view");
+
+// Method 2: Via Orchestrator directly (recommended in components)
+orchestrator.navigateToView("home-view", {
+  type: "fade",
+  duration: 300
+});
 ```
 
 ## Core Modules
@@ -119,19 +127,103 @@ subscribeToGlobalState("user.name", (value) => {
 
 ### Navigation Manager
 
+**Important:** NavigationManager is a singleton service that should not be instantiated directly. It is automatically created by AppBuilder, and you access navigation methods through your AppBuilder instance.
+
 Navigate between pages and views:
 
 ```typescript
-import { NavigationManager } from "interactiv";
+// ✅ Correct: Use navigation through AppBuilder
+const app = new AppBuilder(orchestrator);
 
-const navManager = new NavigationManager(orchestrator);
+// Add your pages and views
+app.addPage(homePage);
 
 // Navigate to a page
-navManager.navigateToPage("home-page");
+app.navigateToPage("home-page");
 
-// Navigate to a view
-navManager.navigateToView("home-view");
+// Navigate to a view with optional transition
+app.navigateToView("home-view", {
+  type: "fade",
+  duration: 300,
+  easing: "ease-in-out"
+});
+
+// Get current navigation state
+const currentPageId = app.getCurrentPageId();
+const currentViewId = app.getCurrentViewId();
+const isTransitioning = app.isTransitioning();
 ```
+
+**❌ Incorrect Usage:**
+```typescript
+// Don't create NavigationManager directly - this will throw an error!
+const navManager = new NavigationManager(orchestrator); // ERROR!
+```
+
+The NavigationManager uses shared global state and event bus namespaces. Creating multiple instances would cause:
+- Conflicting global state management
+- Event bus namespace collisions
+- Ambiguous navigation routing
+
+For this reason, only one instance exists per application, managed by AppBuilder.
+
+#### Navigating from Within Components
+
+All components have access to the `orchestrator` via `this.orchestrator`, making navigation simple and consistent:
+
+```typescript
+import { Component } from "interactiv";
+
+class MyComponent extends Component {
+  constructor(id: string, orchestrator: EventOrchestrator) {
+    super(id, orchestrator);
+    this.setupNavigation();
+  }
+
+  private setupNavigation(): void {
+    // Navigate to a view when button is clicked
+    this.point(".nav-button", () => {
+      this.orchestrator.navigateToView("target-view", {
+        type: "slide",
+        direction: "left",
+        duration: 300
+      });
+    });
+
+    // Navigate to a page
+    this.point(".page-button", () => {
+      this.orchestrator.navigateToPage("target-page", {
+        type: "fade",
+        duration: 400
+      });
+    });
+  }
+
+  protected defineTemplate(): void {
+    this.template = html`
+      <div>
+        <button class="nav-button">Go to View</button>
+        <button class="page-button">Go to Page</button>
+      </div>
+    `;
+  }
+
+  protected defineStyles(): void {
+    this.styles = css`
+      button {
+        padding: 1rem;
+        margin: 0.5rem;
+      }
+    `;
+  }
+}
+```
+
+**Key Benefits:**
+- Simple and direct API - no need to access event bus manually
+- Consistent mental model: orchestrator coordinates everything
+- Less boilerplate code
+- Type-safe navigation methods
 
 ### Event Manager
 
@@ -160,6 +252,65 @@ eventManager.drag(".draggable", {
   end: (data) => console.log("Drag end"),
 });
 ```
+
+### Screensaver Manager
+
+The screensaver manager monitors user activity and triggers actions after a configurable timeout period. It supports two modes:
+
+#### Standard Screensaver Mode
+
+Navigate to a dedicated screensaver page after inactivity. User activity exits the screensaver and returns to the previous or starting page.
+
+```typescript
+// Create a screensaver page with views
+const screensaverPage = new Page("screensaver-page", orchestrator, false);
+const screensaverView = new View("screensaver-view", orchestrator, false, 
+  html`<div class="screensaver">...</div>`,
+  css`.screensaver { /* styles */ }`
+);
+screensaverPage.addView(screensaverView);
+
+// Add screensaver with standard behavior
+app.addScreensaver(screensaverPage, {
+  timeoutSeconds: 30,
+  defaultViewId: "screensaver-view",
+  exitBehavior: "return",       // Return to where the user was before
+  transitionConfig: { type: "fade", duration: 500 },
+});
+```
+
+#### Return-to-Home Mode
+
+Instead of showing a screensaver, navigate back to a specified home page/view after inactivity. No screensaver page is needed — the app simply redirects to the home screen. The screensaver never enters an "active" state, so user activity just resets the inactivity timer.
+
+```typescript
+// No screensaver page needed — pass null
+app.addScreensaver(null, {
+  timeoutSeconds: 60,
+  screensaverViewBehavior: "returnHome",
+  startingPageId: "home-page",    // The home page to navigate to
+  defaultViewId: "home-view",     // Optional: the home view to show
+  transitionConfig: { type: "fade", duration: 500 },
+});
+```
+
+#### Configuration Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `timeoutSeconds` | `number` | Seconds of inactivity before activation |
+| `page` | `Page` | Screensaver page (required unless using `returnHome`) |
+| `screensaverViewBehavior` | `"default" \| "specific" \| "return" \| "returnHome"` | How to handle the view on activation |
+| `defaultViewId` | `string` | Default view to show (or home view for `returnHome`) |
+| `exitBehavior` | `"reset" \| "return"` | Where to go when exiting the screensaver |
+| `startingPageId` | `string` | Page to navigate to on exit/reset (or home page for `returnHome`) |
+| `startingViewId` | `string` | View within the starting page on exit |
+| `transitionConfig` | `TransitionConfig` | Transition animation configuration |
+| `activateCallback` | `() => void` | Called when screensaver activates or returns home |
+| `deactivateCallback` | `() => void` | Called when screensaver deactivates |
+| `blockerCallback` | `() => boolean` | Return `true` to prevent activation |
+| `rebootTimeout` | `number \| null` | Minutes before triggering a reboot callback |
+| `rebootCallback` | `() => void` | Called when reboot timeout elapses |
 
 ### Settings Manager
 

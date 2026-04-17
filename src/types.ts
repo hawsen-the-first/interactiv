@@ -26,3 +26,10 @@ export interface ComponentProps {
   orchestrator: EventOrchestrator;
   bubbleEvents: boolean;
 }
+
+export interface RenderOptions {
+  fade?: {
+    enabled: boolean;
+    duration?: number; // milliseconds, default 300ms
+  };
+}

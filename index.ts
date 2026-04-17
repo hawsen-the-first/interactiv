@@ -25,9 +25,20 @@ import type { SettingsConfig } from "./src/settingsManager";
 import type { PageProps, ComponentProps, ViewProps } from "./src/types";
 import { css, html } from "./utils/template-helpers";
 import { Logger } from "./utils/logger";
-import { useAnimations } from "./src/animationBus";
+import { useAnimations, AnimationManager } from "./src/animationBus";
 import { configureLogger } from "./src/logger";
-
+import {
+  GarbageCollector,
+  createGarbageCollector,
+  type GarbageCollectionStats,
+} from "./src/garbageCollector";
+import {
+  TransitionOverlay,
+  transitionWithOverlay,
+  type TransitionOverlayConfig,
+  type TransitionRequestPayload,
+} from "./src/transitionOverlay";
+5
 export {
   createOrchestrator,
   EventOrchestrator,
@@ -40,6 +51,7 @@ export {
   ScreensaverManager,
   SettingsManager,
   EventManager,
+  AnimationManager,
   // External State Management
   stateManager,
   getGlobalState,
@@ -49,6 +61,12 @@ export {
   useAnimations,
   ExternalStateManager,
   ComponentStateManager,
+  // Garbage Collection
+  GarbageCollector,
+  createGarbageCollector,
+  // Transition Overlay System
+  TransitionOverlay,
+  transitionWithOverlay,
   css,
   html,
   Logger,
@@ -66,6 +84,9 @@ export type {
   PageProps,
   ViewProps,
   ComponentProps,
+  GarbageCollectionStats,
+  TransitionOverlayConfig,
+  TransitionRequestPayload,
 };
 
 // Named exports for direct import
