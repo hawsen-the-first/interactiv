@@ -1,6 +1,6 @@
 {
   "name": "@hawsen-the-first/interactiv",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A TypeScript framework for building interactive applications with event management, state management, navigation, and screensaver functionality",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

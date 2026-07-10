@@ -38,7 +38,19 @@ import {
   type TransitionOverlayConfig,
   type TransitionRequestPayload,
 } from "./src/transitionOverlay";
-5
+import {
+  MediaQueue,
+  type MediaItem,
+  type MediaQueueElements,
+  type MediaQueueEvent,
+  type MediaPriority,
+  type MediaType,
+} from "./src/mediaQueue";
+import {
+  ScheduledEventManager,
+  type ScheduleConfig,
+  type InterruptBehavior,
+} from "./src/scheduledEventManager";
 export {
   createOrchestrator,
   EventOrchestrator,
@@ -67,6 +79,9 @@ export {
   // Transition Overlay System
   TransitionOverlay,
   transitionWithOverlay,
+  // Media & Scheduling
+  MediaQueue,
+  ScheduledEventManager,
   css,
   html,
   Logger,
@@ -87,6 +102,13 @@ export type {
   GarbageCollectionStats,
   TransitionOverlayConfig,
   TransitionRequestPayload,
+  MediaItem,
+  MediaQueueElements,
+  MediaQueueEvent,
+  MediaPriority,
+  MediaType,
+  ScheduleConfig,
+  InterruptBehavior,
 };
 
 // Named exports for direct import
